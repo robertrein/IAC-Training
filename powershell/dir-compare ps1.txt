@@ -1,0 +1,17 @@
+﻿#Description: Reads a file of directories, 2 directories per line, and compares the directories.
+#Output file: directories.csv - shows directory file counts and total file size for each directory.
+#
+Remove-Item dir-compare.csv
+
+$dirsfile = Get-Content dir-compare.txt
+
+Foreach ($dir_pair in $dirsfile)
+    {
+    $dirs = $dir_pair.split(",")
+
+    $d1 = Get-ChildItem -path $dirs[0] -Recurse | Measure-Object -Sum Length | Select-Object Count, Sum
+    $d2 = Get-ChildItem -path $dirs[1] -Recurse | Measure-Object -Sum Length | Select-Object Count, Sum
+
+    $comparison = $dir_pair + ',' + $d1 + ',' + $d2
+    $Outfile = $comparison >>dir-compare.csv
+    }

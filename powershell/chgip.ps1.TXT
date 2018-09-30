@@ -1,0 +1,178 @@
+#
+# SCRIPT: chgip.ps1
+#
+# PURPOSE:  TO CHANGE VM IP ADDRESSES USING POWERCLI.  GENERALLY USED FOR MIGRATED MACHINES FROM ONE ENVIRONMENT TO ANOTHER.
+#
+# WRITTEN BY:  ROBERT REIN
+#
+# DATE COMPLETED:  04/04/2018
+#
+# SYNTAX TO RUN
+# 
+# > .\chgip.ps1
+# Please enter input file of servers to be re-ip'd:
+#
+# THE INPUT FILE IS A FILE AND IT'S PATH CONTAINING INFORMATION FOR THIS SCREEN TO PROCESS
+# BELOW IS THE FORMAT OF THIS FILE
+#
+# FIELDS:
+#
+# VM - VM TO BE ASSIGNED A NEW IP
+# VCENTER - THE LOCATION VCENTER THE VM IS ASSIGNED TO
+# OLDIP - OLD IP NUMBER (MORE SO NOW FOR DOCUMENTATION)
+# NEWIP - NEW IP ADDRESS TO BE ASSIGNED
+# NEWSUBNET - ASSOCIATED IP NEW SUBNET ADDRESS
+# NEWGATWAY - ASSOCIATED IP GATEWAY ADDRESS
+# NEWDNS - NET DNS ADDRESS FOR VM
+# MAC ADDRESS - THE MAC ADDRESS OF THE NIC CARD TO BE REIP'S, IF THIS IS NOT CORRECT THE IP WILL NOT UPDATE CORRECTLY, IF AT ALL
+# DOMAIN - NEW DOMAIN NAME OF VM
+#
+# EACH FIELD WITHIN IT'S RECORD IS COMMA SEPERATED
+#
+# OTHER INPUTS WILL BE 3 DIALOGUE BOXES FOR CREDENTIALS
+# 
+# 1. Please enter Domain Credentials?  (THIS WILL GET YOU INTO AD AND VMWARE)
+# 2. Please enter administrator password for Windows Servers:  CREDENTIALS FOR WINDOWS)
+# 3. Please enter user and password for linux acount with sudo access: (SUDO CREDENTIALS FOR LINUX)
+#
+#
+#
+
+
+$logFile=".\chgip.log"
+$inputFile=Read-Host "Please enter input file of servers to be re-ip'd"
+$fileFound=Test-Path $inputFile
+if ( -Not $fileFound )
+{
+	Write-Host "File not found"
+	exit
+}
+# Load PowerCLI
+get-date | out-file -Append  -FilePath $logFile
+"Change IP script has started " | out-file -Append  -FilePath $logFile
+
+$psSnapInName = "VMware.VimAutomation.Core"
+if (-not (Get-PSSnapin -Name $psSnapInName -ErrorAction Silentlycontinue)) {
+   # Exit if the PowerCLI snapin can't be loaded
+   #Import-Module -Name VMware.VimAutomation.Core
+   Get-Module -Name VMware* -ListAvailable | Import-Module 
+   #Add-PSSnapin -Name $psSnapInName -ErrorAction Stop
+    get-date | out-file -Append  -FilePath $logFile
+    "POWERCLI LIBRARIES HAVE BEEN ADDED" | out-file -Append  -FilePath $logFile
+
+}
+$windows2016="v6 - W2016"
+$windows2012="v6 - W2012R2"
+$linux6="V6 - RHEL 6"
+$linux7="V6 - RHEL 7"
+
+$arrADcreds=get-credential -UserName "@optumfe.com" -Message "Please enter Domain Credentials?"
+$arrWinAdmincreds=get-credential -UserName Administrator -Message "Please enter administrator password for Windows Servers: "
+$arrLinuxcreds=get-credential -UserName vagrant -Message "Please enter user and password for linux acount with sudo access: "
+$arrayInput = import-csv -Path $inputFile
+get-date | out-file -Append  -FilePath $logFile  
+"READ IN INPUT FILE" | out-file -Append  -FilePath $logFile  
+ 
+$arrayInput | foreach-object {
+
+	$vcConnect=connect-viserver -server $_.vCenter -ErrorAction Silentlycontinue
+	if ($vcConnect -eq $NULL)
+
+	{
+		write-host "VCENTER"$_.vcenter "did not connect"
+		get-date | out-file -Append  -FilePath $logFile  
+		"COULD NOT CONNECT TO VCENTER "+$_.vCenter+" for VM "+$_.vm  | out-file -Append  -FilePath $logFile
+		return
+	}
+	else
+	{
+		get-date | out-file -Append  -FilePath $logFile  
+		"Connected to VCENTER "+$_.vCenter+" for VM "+$_.vm | out-file -Append  -FilePath $logFile
+	}
+
+	$vmGet=get-vm $_.vm -ErrorAction Silentlycontinue
+	if ($vmGet -eq $NULL)
+	{
+		write-host "VM"$_.vm "does not exist on VCENTER"$_.vcenter
+		get-date | out-file -Append  -FilePath $logFile
+		"VM "+$_.vm+" does not exist on VCENTER "+$_.vcenter | out-file -Append -FilePath $logFile
+		return
+	}
+	$newSpec="DeploySpec-"+$_.vm
+	if (Get-OSCustomizationSpec -Name $newSpec -ErrorAction Silentlycontinue) {
+	 get-date | out-file -Append  -FilePath $logFile 
+         "Removed duplicate OS Custom template "+$newSpec | out-file -Append -FilePath $logFile 
+         Remove-OSCustomizationSpec $newSpec -Confirm:$false
+	}
+	$vmType=$NULL
+	$os=$NULL
+	$vmGet.guest.OSFullName
+	if ($vmGet.guest.OSFullName.contains("Windows"))
+	{
+		$os="Windows"
+		if ($vmGet.guest.OSFullName.contains("2012"))
+		{
+			$vmType=$windows2012
+		}
+		if ($vmGet.guest.OSFullName.contains("2016"))
+		{
+			$vmType=$windows2016
+		}
+	}
+	else
+	{
+		if ($vmget.guest.OSFullName.contains("Linux 6"))
+		{
+			$os="Linux"
+			$vmType=$linux6
+		}
+		if ($vmget.guest.OSFullName.contains("Linux 7"))
+		{
+			$os="Linux"
+			$vmType=$linux7
+		}
+	}
+	if ($os -eq $NULL)
+	{
+		get-date | out-file -Append  -FilePath $logFile
+		"VM "+$_.vm+" is not LINUX or WINDOWS, NOT PROCESSED" | out-file -Append  -FilePath $logFile
+		return
+	}
+	
+	$itmCloneSpec = Get-OSCustomizationSpec $vmType | New-OSCustomizationSpec -Name $newSpec
+	get-date | out-file -Append  -FilePath $logFile 
+       	"ADDED OS Custom template "+$newSpec | out-file -Append -FilePath $logFile 
+	if ($os -eq "Windows")
+	{
+		Write-Host $_.newip
+		Get-OSCustomizationSpec $itmCloneSpec | Set-OSCustomizationSpec -Domain $_.Domain -DomainCredentials $arrADcreds -GuiRunOnce "dir" -AutoLogonCount 0 -AdminPassword $arrWinAdmincreds.GetNetworkCredential().password | Out-File $logFile -Append	
+		Get-OSCustomizationNicMapping $itmCloneSpec | Set-OSCustomizationNicMapping -NetworkAdapterMac $_.mac -ipMode UseStaticIP -IpAddress $_.newip -SubnetMask $_.newsubnet -DefaultGateway $_.newgateway -DNS $_.newdns
+	}
+	else
+	{
+		Get-OSCustomizationNicMapping -Spec $itmCloneSpec | Where { $_.Position -eq "1"} | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIp -IpAddress $_.newip -SubnetMask $_.newsubnet -DefaultGateway $_.newgateway | Out-File $logFile -Append
+	}
+	stop-vm -vm $_.vm -confirm:$false
+	get-date | out-file -Append  -FilePath $logFile
+	"VM "+$_.vm+" has been stopped" | out-file -Append  -FilePath $logFile
+
+	get-vm $_.vm | set-vm -OSCustomizationSpec $itmCloneSpec -confirm:$false
+	get-date | out-file -Append  -FilePath $logFile
+	"VM "+$_.vm+" Custom Spec has been applied " + $itmCloneSpec | out-file -Append  -FilePath $logFile
+
+	start-vm -vm $_.vm
+	get-date | out-file -Append  -FilePath $logFile
+	"VM "+$_.vm+" has been started" | out-file -Append  -FilePath $logFile
+
+	Remove-OSCustomizationSpec $newSpec -Confirm:$false
+	get-date | out-file -Append  -FilePath $logFile
+	"Custom Spec "+$itmCloneSpec + " has been removed" | out-file -Append  -FilePath $logFile
+
+}
+
+
+        disconnect-viserver * -confirm:$false
+	get-date | out-file -Append  -FilePath $logFile
+	"CHANGE IP SCRIPT HAS COMPLETED" | out-file -Append  -FilePath $logFile
+
+ 

@@ -1,0 +1,654 @@
+Param
+(
+	[Parameter(Mandatory=$True,Position=1)]
+	[string]$Mode
+)
+
+
+
+
+Function Create
+{
+
+# SET STATIC VARIABLES, CHANGE THIS ACCORDING TO YOUR REQUIREMENTS
+#Set universal values
+$IPPolicy = "Static"
+$PriDNSPolicy = "Static"
+$PriWinsPolicy = "Static"
+$BUDNSPolicy = "Static"
+$BUWinsPolicy = "Static"
+$DNS1 = "10.90.40.105"
+$DNS2 = "10.4.148.103"
+$DNS3 = "10.3.116.104"
+$DMZDNS1 = "10.117.7.30"
+$DMZDNS2 = "10.217.12.36"
+$WINS1 = "10.175.231.100"
+$WINS2 = "10.223.192.155"
+$DMZWINS = "10.119.116.63"
+$LenexaDNSSSO = "ksc.pcl.ingenix.com,pcl.ingenix.com,geoaccess.com,dmzkc1.geoaccess.com,ms.ds.uhc.com,uhc.com"
+
+remove-item Create_Errors.txt -ErrorAction SilentlyContinue
+remove-item Create_success.txt -ErrorAction SilentlyContinue
+
+$ErrorProcessing=$False
+if (Test-Path Output_Scripts)
+{
+	$OutPath="Output_Scripts"
+}
+else
+{
+	$OutPath="Output_Scripts"
+	New-Item -ItemType directory -Path $OutPath
+}
+$GuestCred=get-credential
+$Servers=import-csv vmreip.csv
+$VM=$NULL
+$OS=$NULL
+foreach($Server in $Servers)
+{
+	$VM=Get-View -ViewType VirtualMachine -Property Name,Runtime,Config,Guest,Network -Filter @{"name" = $Server.Name} -ErrorAction SilentlyContinue
+
+	if ($VM -ieq $NULL)
+	{
+		Write-Host $Server.Name "Does not exist in VMWARE"
+		$ErrorProcessing=$True
+		$OutRecord=$Server.Name + " Does not exist in VMWARE"
+		$OutRecord >>Create_Errors.txt
+		continue
+	}
+	[string]$OS=$VM.Guest.GuestFullName
+
+	$OSFamily=$NULL
+	if ($OS.Contains("2008"))
+	{
+		$OSFamily="2008"
+	}
+	if ($OS.Contains("2003"))
+	{
+		$OSFamily="2003"
+	}
+	if ($OSFamily -ieq $NULL)
+	{
+		Write-Host $Server.Name "cannot determine OS version"
+		$ErrorProcessing=$True
+		$OutRecord=$Server.Name + " cannot determine OS version"
+		$OutRecord >>Create_Errors.txt
+		continue
+	}
+	Write-Host "Processing Host" $Server.Name "Running OS" $OSFamily
+#	$WMIObject=Get-WmiObject -Class Win32_PnPEntity -Namespace "root\cimv2" -Computer $Server.name -ErrorVariable myerror -ErrorAction SilentlyContinue
+	$OSNicsInfoScriptText = "cmd.exe /C ipconfig /all"
+	$MyError=$NULL
+	$OSNicsInfoRaw = Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSNicsInfoScriptText -ScriptType Bat -VM $Server.Name -ErrorVariable myerror -ErrorAction SilentlyContinue
+	if($MyError -ne $NULL)
+	{
+		Write-Host $Server.Name "Error running INVOKE-VMSCRIPT COMMAND"
+		$ErrorProcessing=$True
+		$OutRecord=$Server.Name  + " Error running INVOKE-VMSCRIPT COMMAND"
+		$OutRecord >>Create_Errors.txt
+		continue
+	}
+
+	$OSNicsInfoRaw >vmreip.tmp
+	$OSNicsInfoRaw=type vmreip.tmp
+	#remove-item vmreip.tmp -ErrorAction SilentlyContinue
+	$NICIp=$NULL
+	$NICsName=$NULL
+	$priosnICnAME=$NULL
+	
+	$NICOldIP=$Server.NetworkPath
+	$NICOldBupIp=$Server.CURBUIP
+
+	foreach($line in $OSNicsInfoRaw)
+	{
+		if ($line.Contains("Ethernet adapter"))
+		{
+			$NicsName=$line.SubString(20)
+			$NicsName=$NicsName.Replace(":","")
+			$LookForIP=$true
+		}
+		If ($LookForIP)
+		{
+			if ($line.Contains("IPv4"))
+			{
+				$LookForIP=$false
+				$NICIp=$line.SubString(42)
+				$NICIp=$NICIp.Replace("(Preferred)","")
+				$NICIp=$NICIp.Replace(" ","")
+				IF ($NICOldIP -ieq $NICIp)
+				{
+					$PRIOSNicName=$NicsName
+				}
+				if ($NICOldBupip -ieq $NICIp)
+				{
+					$BUOSNicName=$NicsName
+				}
+				continue
+			}
+
+			if ($line.Contains("IP Address"))
+			{
+				$LookForIP=$false
+				$NICIp=$line.SubString(42)
+				$NICIp=$NICIp.Replace("(Preferred)","")
+				$NICIp=$NICIp.Replace(" ","")
+				IF ($NICOldIP -ieq $NICIp)
+				{
+					$PRIOSNicName=$NicsName
+				}
+				if ($NICOldBupip -ieq $NICIp)
+				{
+					$BUOSNicName=$NicsName
+				}
+				continue
+			}
+			
+		}
+
+	}
+
+	if($NICsName -eq $NULL)
+	{
+		Write-Host $Server.Name "NIC CARD NAME NULL"
+		$ErrorProcessing=$true	
+		$OutRecord=$Server.Name + " NIC CARD NAME NULL"
+		$OutRecord >>Create_Errors.txt
+		continue
+	}
+	if($NICIp -eq $NULL)
+	{
+		Write-Host $Server.Name "NEW NIC CARD IP NULL"
+		$ErrorProcessing=$true	
+		$OutRecord=$Server.Name + " NEW NIC CARD IP NULL"
+		$OutRecord >>Create_Errors.txt
+		continue
+	}
+	IF ($Server.ChangeBU -ieq "Y")
+	{
+		if ($BUOSNicName -ieq $NULL)
+		{
+			Write-Host $Server.Name "BACKUP NIC CARD NAME IS NULL"
+			$ErrorProcessing=$true
+			$OutRecord=$Server.Name + " BACKUP NIC CARD NAME IS NULL"
+			$OutRecord >>Create_Errors.txt
+			continue
+		}
+		if ($NICIp -ieq $NULL)
+		{
+			Write-Host $Server.Name "BACKUP NIC CARD IP IS NULL"
+			$ErrorProcessing=$true
+			$OutRecord=$Server.Name + " BACKUP NIC CARD IP IS NULL"
+			$OutRecord >>Create_Errors.txt
+			continue
+		}
+	}
+
+	$StdPrioSNicName=$Server.Name.ToUpper()+"_PRI"
+	$StdBUOSNicName="backup-storage"
+	$NewIP=$Server.NewPriIP
+	$NewMask=$Server.NewPriSNM
+	$NewGW=$Server.NewPriGW
+	$NewBUIP=$server.NewBUIP
+	$NewBUSNM=$server.NewBUSNM
+	$FileName=$OutPath+"\"+$Server.Name+"_Migration.bat"
+	remove-item $FileName -ErrorAction SilentlyContinue
+
+	if ($OSFamily -ieq "2008")
+	{
+		$OutputString=":: This script will configure (or reconfigure) the indicated elements of a VM guest. `r`n"
+		$OutputString=$OutputString + "@ECHO off `r`n"
+		$OutputString=$OutputString+"SetLocal `r`n"
+
+		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+		$OutputString=$OutputString+"::*  Configure Primary network interface name and IP.                               *`r`n" 
+		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+		$OutputString=$OutputString+" `r`n" 
+		$OutputString=$OutputString+" `r`n" 
+		$OutputString=$OutputString+"::Rename PRI NIC to standard. `r`n" 
+		$OutputString=$OutputString+"::Clear DNS and WINS server entries. `r`n" 
+		$OutputString=$OutputString+"schtasks /delete -tn " + """" + "Migration Config" + """" + " /F`r`n" 
+		$OutputString=$OutputString+"netsh interface set interface name=" + """" + $PriOSNicName + """" + " newname=" + """" + $StdPriOSNicName + """" + "`r`n"
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ipv4 set address name=" + """" + $StdPriOSNicName + """" + " source=" + $IPPolicy + " address=" + $NewIp + `
+		" mask=" + $NewMask + " gateway=" + $NewGW + " gwmetric=0`r`n" 
+		$OutputString=$OutputString+"netsh int ipv4 set dnsserver name=" + """" + $StdPriOSNicName + """" + " address=none source=" + $IPPolicy + "`r`n" 
+		$OutputString=$OutputString+"netsh int ipv4 set winsserver name=" + """" + $StdPriOSNicName + """" + " address=none source=" + $IPPolicy + "`r`n" 
+		$OutputString=$OutputString+"c:\MigrationTemp\nvspbindxp.exe /++ " + $StdPriOSNicName + " ms_tcpip`r`n" 
+		$OutputString=$OutputString+"REG ADD HKLM\SYSTEM\CurrentControlSet\services\Tcpip\Parameters /v "+ """" + "SearchList" + """" + " /d " + """" + $LenexaDNSSSO + """" + " /f `r`n" 
+
+		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+		$OutputString=$OutputString+"::*  Configure Primary network interface DNS and WINS, per standard (Internal).     *`r`n" 
+		$OutputString=$OutputString+"::***********************************************************************************`r`n`r`n" 
+		$OutputString=$OutputString+"netsh int ipv4 add dnsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $dns1 + " index=1`r`n" 
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ipv4 add dnsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $dns2 + " index=2`r`n"  
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ipv4 add dnsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $dns3 + " index=3`r`n"  
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ipv4 add winsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $wins1 + " index=1`r`n"  
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ipv4 add winsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $wins2 + " index=2`r`n"  
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		
+		$OutputString=$OutputString+" `r`n" 
+		$OutputString=$OutputString+" `r`n" 
+
+#		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+#		$OutputString=$OutputString+"::* Configure Primary network interface DNS and WINS, per standard (DMZ).           *`r`n" 
+#		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+#		$OutputString=$OutputString+"netsh int ipv4 add dnsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $dmzdns1 + " index=1`r`n" 
+#		$OutputString=$OutputString+"Sleep 10`r`n"
+#		$OutputString=$OutputString+"netsh int ipv4 add dnsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $dmzdns2 + " index=2`r`n" 
+#		$OutputString=$OutputString+"Sleep 10`r`n"
+#		$OutputString=$OutputString+"netsh int ipv4 add winsserver name=" + """" + $StdPriOSNicName +"""" + " address=" + $dmzwins + " index=1`r`n" 
+#		$OutputString=$OutputString+"Sleep 10`r`n"
+#		$OutputString=$OutputString+" `r`n" 
+#		$OutputString=$OutputString+" `r`n"
+		IF ($Server.ChangeBU -ieq "Y")
+			{
+			$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+			$OutputString=$OutputString+"::* Configure backup network interface name and IP.                                 *`r`n" 
+			$OutputString=$OutputString+"::* Clear DNS and WINS server entries.                                              *`r`n" 
+			$OutputString=$OutputString+"::* Disable dynamic DNS registration.                                               *`r`n" 
+			$OutputString=$OutputString+"::* Disable NetBIOS.                                                                *`r`n" 
+			$OutputString=$OutputString+"::* Disable File and Print Sharing.                                                 *`r`n" 
+			$OutputString=$OutputString+"::***********************************************************************************`r`n`r`n" 
+			$OutputString=$OutputString+"netsh interface set interface name=" + """" + $BUOSNicName +"""" + " newname="+""""+$StdBUOSNicName+""""+"`r`n" 
+			$OutputString=$OutputString+"sleep 10`r`n" 
+			$OutputString=$OutputString+"netsh int ip set address name="+""""+$StdBUOSNicName+""""+" source="+$IPPolicy + " addr=" + $NewBUIP + " mask="+$NewBUSNM+"`r`n" 
+			$OutputString=$OutputString+"netsh int ip set dns name="+""""+$StdBUOSNicName+""""+" source="+$IPPolicy+" addr=none register=none`r`n"
+
+			}
+		Else
+			{
+			$NetCfgBU =  $null
+			}
+	}
+
+
+
+
+	IF($OSFamily -imatch "2003")
+	{
+		$OutputString="::***********************************************************************************`r`n" 
+		$OutputString=$OutputString+"::*  Configure Primary network interface name and IP.                               *`r`n" 
+		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+		$OutputString=$OutputString+"::Rename PRI NIC to standard.`r`n" 
+		$OutputString=$OutputString+" `r`n" 
+		$OutputString=$OutputString+" `r`n"  
+		$OutputString=$OutputString+"::Clear DNS and WINS server entries`r`n" 
+		$OutputString=$OutputString+"::Set Primary NIC as first in binding order`r`n" 
+		$OutputString=$OutputString+"schtasks /delete /tn " + """" + "Migration Config" + """" + " /F`r`n" 
+		$OutputString=$OutputString+"netsh interface set interface name=" + """" + $PriOSNicName + """" + " newname=" + """" + $StdPriOSNicName + """" + "`r`n" 
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ip set address name=" + """" + $StdPriOSNicName + """" + " source=" + $IPPolicy + " addr=" + $NewIp + `
+		" mask=" + $NewMask + " gateway=" + $NewGW + " gwmetric=0`r`n" 
+		$OutputString=$OutputString+"netsh int ip set dns name=" + """" + $StdPriOSNicName + """" + " addr=none source=" + $IPPolicy + "`r`n" 
+		$OutputString=$OutputString+"netsh int ip set wins name=" + """" + $StdPriOSNicName + """" + " addr=none source=" + $IPPolicy + "`r`n" 
+		$OutputString=$OutputString+"c:\MigrationTemp\nvspbindxp.exe /++ " + $StdPriOSNicName + " ms_tcpip`r`n" 
+		$OutputString=$OutputString+"REG ADD HKLM\SYSTEM\CurrentControlSet\services\Tcpip\Parameters /v " + """" + "SearchList" + """" + " /d " + """" + $LenexaDNSSSO + """"+ " /f`r`n" 
+		$OutputString=$OutputString+" `r`n" 
+		$OutputString=$OutputString+"`r`n" 
+		
+		
+		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+		$OutputString=$OutputString+"::*  Configure Primary network interface DNS and WINS, per standard (Internal).`r`n" 
+		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+		$OutputString=$OutputString+"netsh int ip add dns name=" + """" + $StdPriOSNicName + """" + " addr=" + $dns1 + " index=1`r`n" 
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ip add dns name=" + """" + $StdPriOSNicName + """" + " addr=" + $dns2 + " index=2`r`n" 
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ip add dns name=" + """" + $StdPriOSNicName + """" + " addr=" + $dns3 + " index=3`r`n" 
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ip add wins name=" + """" + $StdPriOSNicName + """" + " addr=" + $wins1 + " index=1`r`n"  
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+"netsh int ip add wins name=" + """" + $StdPriOSNicName + """" + " addr=" + $wins2 + " index=2`r`n" 
+		$OutputString=$OutputString+"Sleep 10`r`n"
+		$OutputString=$OutputString+" `r`n" 
+		$OutputString=$OutputString+" `r`n" 		
+		
+#		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+#		$OutputString=$OutputString+"::* Configure Primary network interface DNS and WINS, per standard (DMZ).           *`r`n" 
+#		$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+#		$OutputString=$OutputString+"netsh int ipv4 add dnsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $dmzdns1 + " index=1`r`n" 
+#		$OutputString=$OutputString+"Sleep 10`r`n"
+#		$OutputString=$OutputString+"netsh int ipv4 add dnsserver name=" + """" + $StdPriOSNicName + """" + " address=" + $dmzdns2 + " index=2`r`n" 
+#		$OutputString=$OutputString+"Sleep 10`r`n"
+#		$OutputString=$OutputString+"netsh int ipv4 add winsserver name=" + """" + $StdPriOSNicName +"""" + " address=" + $dmzwins + " index=1`r`n" 
+#		$OutputString=$OutputString+"Sleep 10`r`n"
+#		$OutputString=$OutputString+" `r`n" 
+#		$OutputString=$OutputString+" `r`n"
+		
+	
+		IF ($NewConfigLine.ChangeBU -ieq "Y")
+		{
+			$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+			$OutputString=$OutputString+"::* Configure backup network interface name and IP.                                 *`r`n" 
+			$OutputString=$OutputString+"::* Clear DNS and WINS server entries.                                              *`r`n" 
+			$OutputString=$OutputString+"::* Disable dynamic DNS registration.                                               *`r`n" 
+			$OutputString=$OutputString+"::* Disable NetBIOS.                                                                *`r`n" 
+			$OutputString=$OutputString+"::* Disable File and Print Sharing.                                                 *`r`n" 
+			$OutputString=$OutputString+"::***********************************************************************************`r`n" 
+			$OutputString=$OutputString+" `r`n" 
+			$OutputString=$OutputString+"`r`n" 
+			$OutputString+"netsh interface set interface name=" + """" + $BUOSNicName +"""" + " newname="+""""+$StdBUOSNicName+""""+"`r`n" 
+			$OutputString=$OutputString+"sleep 10`r`n" 
+			$OutputString=$OutputString+"netsh int ip set address name="+""""+$StdBUOSNicName+""""+" source="+$IPPolicy+" addr=" +$NewBUIP+ " mask="+$NewBUSNM +"`r`n" 
+			$OutputString=$OutputString+"netsh int ip set dns name="+""""+$StdBUOSNicName+""""+" source="+$IPPolicy+" addr=none register=none`r`n"
+		}
+		Else
+		{
+			$NetCfgBU =  $null
+		}
+	
+	}	
+	
+	New-Item -ItemType File -Name $FileName -Force -Value $OutputString
+
+	$TaskFile="C:\MigrationTemp\"+$Server.Name+"_Migration.bat"
+	
+	$SchedFile=$OutPath+"\"+$Server.Name+"_Schedule.bat"
+	remove-item $SchedFile -ErrorAction SilentlyContinue
+	$OutputString="schtasks /create /RU " + """" + "SYSTEM" + """" +" /sc ONstart /tn "+ """"+ "Migration Config"+ """" + " /TR "+ """" + $TaskFile + """"+" /F"
+	New-Item -ItemType File -Name $SchedFile -Force -Value $OutputString
+	$OutRecord=$Server.Name + " completed successfully to change " + $PriOSNicName + " to IP ADDRESS:"+$NEWIp
+	$OutRecord >>Create_Success.txt
+ 
+
+}
+	if ($ErrorProcessing)
+	{
+		Write-Host "Script Completed Creating Files, however there were errors in 1 or more servers being processed"
+		exit
+	}
+	Write-Host "Script Completed Creating Files with no errors"
+} #End CreateFiles Function
+Function Transfer
+{
+	remove-item Transfer_Success.txt -ErrorAction SilentlyContinue
+	remove-item Transfer_Errors.txt -ErrorAction SilentlyContinue
+	$ErrorProcessing=$false
+	$GuestCred=get-credential
+	$OutPath="Output_Scripts"
+	Write-Host "Transfer Files Mode"
+	$OutPath="Output_Scripts"
+	$Servers=import-csv vmreip.csv
+	foreach($Server in $Servers)
+	{
+		$Computer=$Server.Name
+		$FileName=$OutPath+"\"+$Computer + "_Migration.bat"		
+		if (Test-Path $FileName)
+		{
+			$b=$a
+		}
+		Else
+		{
+			$ErrorProcessing=$true
+			$OutputString=$Computer+" Migration files do not exist"
+			$OutputString
+			$OutputString >>Transfer_Errors.txt
+			continue			
+		}
+		
+		$TransferTest=Test-Path \\$Computer\c$
+		if ($TransferTest)
+		{
+			$TransferMode="UNC"
+		}
+		Else
+		{
+			$TransferMode="VMTools"
+		}
+		Write-Host "Processing Server "$Computer "In Transfer Mode "$TransferMode
+
+		if ($TransferMode -eq "UNC")
+		{
+			if (Test-Path \\$Computer\c$\MigrationTemp)
+			{
+				remove-item \\$Computer\c$\MigrationTemp\*.* -ErrorAction SilentlyContinue
+				remove-item \\$Computer\c$\MigrationTemp -ErrorAction SilentlyContinue
+			}
+			mkdir \\$Computer\c$\MigrationTemp
+			$BatchScriptFile="Output_Scripts\" + $Computer + "_migration.bat"
+			$SchScriptFile="Output_Scripts\" + $Computer + "_schedule.bat"
+			copy $BatchScriptFile \\$Computer\c$\MigrationTemp
+			copy $SchScriptFile \\$Computer\c$\MigrationTemp
+			copy nvspbindxp.exe \\$Computer\c$\MigrationTemp
+			copy sleep.exe \\$Computer\c$\MigrationTemp
+			$LocalBatchFile="\\"+$Computer+"\c$\MigrationTemp\"+$Computer+"_Migration.bat"
+			$LocalBatchFile
+			if(Test-Path $LocalBatchFile)
+			{
+				$a=$b
+			}
+			Else
+			{
+				$ErrorProcessing=$true
+				$OutputString=$Computer+" Error transfering Batch files to guest computer"
+				$OutputString
+				$OutputString >>Transfer_Errors.txt
+				continue
+			}				
+		}
+
+		if ($TransferMode -eq "VMTools")
+		{
+			$InvokeError=$False
+			$CopyError=$False
+			$MyError=$NULL
+			$OSText = "cmd.exe /C del /q c:\MigrationTemp\*.*"
+			$OSInfoRaw = Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSText -ScriptType Bat -VM $Server.Name -ErrorVariable myerror -ErrorAction SilentlyContinue
+			if ($MyError -ne $NULL)
+			{
+				$InvokeError=$True
+				$MyError=$Null
+			}
+
+			$OSText = "cmd.exe /C rmdir c:\MigrationTemp"
+			$OSInfoRaw = Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSText -ScriptType Bat -VM $Server.Name -ErrorVariable myerror -ErrorAction SilentlyContinue
+			if ($MyError -ne $NULL)
+			{
+				$InvokeError=$True
+				$MyError=$Null
+			}
+
+			$OSText = "cmd.exe /C mkdir c:\MigrationTemp"
+			$OSInfoRaw = Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSText -ScriptType Bat -VM $Server.Name -ErrorVariable myerror -ErrorAction SilentlyContinue
+			if ($MyError -ne $NULL)
+			{
+				$InvokeError=$True
+				$MyError=$Null
+			}
+			If ($InvokeError)
+			{
+				$OutString=$Computer + " Could not complete removal then creation of MigrationTemp Directory"
+				$OutString
+				$OutString >>Transfer_Errors.txt
+				continue
+			}
+
+			$SourceFiles="OutPut_Scripts\"+$Computer+"_*"
+			Copy-VMGuestFile -Source $SourceFiles -Destination c:\MigrationTemp -VM $Computer -LocalToGuest -GuestCredential $GuestCred -ErrorVariable myerror -ErrorAction SilentlyContinue
+			if ($MyError -ne $NULL)
+			{
+				$CopyError=$True
+				$MyError=$Null
+			}
+			Copy-VMGuestFile -Source nvspbindxp.exe -Destination c:\MigrationTemp -VM $Computer -LocalToGuest -GuestCredential $GuestCred -ErrorVariable myerror -ErrorAction SilentlyContinue
+			if ($MyError -ne $NULL)
+			{
+				$CopyError=$True
+				$MyError=$Null
+			}
+			Copy-VMGuestFile -Source sleep.exe -Destination c:\MigrationTemp -VM $Computer -LocalToGuest -GuestCredential $GuestCred -ErrorVariable myerror -ErrorAction SilentlyContinue
+			if ($MyError -ne $NULL)
+			{
+				$CopyError=$True
+				$MyError=$Null
+			}
+
+			if ($CopyError)
+			{
+				$ErrorProcessing=$true
+				$OutputString=$Computer+" Error transfering files to guest computer"
+				$OutputString
+				$OutputString >>Transfer_Errors.txt
+				continue
+			}
+		}
+		$OutputString="Completed Successfully transferring files to "+ $Computer 
+		$OutputString >>Transfer_Success.txt
+	}
+	if ($ErrorProcessing)
+	{
+		Write-Host "Script Completed Transferring Files, however there were errors in 1 or more servers being processed"
+		exit
+	}
+	Write-Host "Script Completed Creating Files with no errors"
+
+}
+
+
+Function DelFiles
+{
+	remove-item Delfiles_Success.txt -ErrorAction SilentlyContinue
+	remove-item Delfiles_Errors.txt -ErrorAction SilentlyContinue
+	$ErrorProcessing=$false
+	$GuestCred=get-credential
+	Write-Host "Delete Guest Files Mode"
+	$Servers=import-csv vmreip.csv
+	foreach($Server in $Servers)
+	{
+		$Computer=$Server.Name
+		$FileName=$OutPath+"\"+$Computer + "_Migration.bat"		
+		
+		$TransferTest=Test-Path \\$Computer\c$
+		if ($TransferTest)
+		{
+			$TransferMode="UNC"
+		}
+		Else
+		{
+			$TransferMode="VMTools"
+		}
+		Write-Host "Processing Server "$Computer "In Delete Mode "$TransferMode
+
+		if ($TransferMode -eq "UNC")
+		{
+			if (Test-Path \\$Computer\c$\MigrationTemp)
+			{
+				remove-item \\$Computer\c$\MigrationTemp\* -ErrorAction SilentlyContinue
+				remove-item \\$Computer\c$\MigrationTemp
+			}
+			if(Test-Path \\$Computer\c$\MigrationTemp)
+			{
+				$ErrorProcessing=$true
+				$OutputString=$Computer+" Error Deleting files on guest computer"
+				$OutputString
+				$OutputString >>Delfiles_Errors.txt
+				continue
+			}
+			Else
+			{
+				$a=$b
+
+			}				
+		}
+
+		if ($TransferMode -eq "VMTools")
+		{
+			$MyError=$NULL
+			$OSText = "cmd.exe /C del /q c:\MigrationTemp\*.*"
+			$OSInfoRaw = Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSText -ScriptType Bat -VM $Server.Name -ErrorVariable myerror -ErrorAction SilentlyContinue
+
+
+			$OSText = "cmd.exe /C rmdir c:\MigrationTemp"
+
+			$OSInfoRaw = Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSText -ScriptType Bat -VM $Server.Name -ErrorVariable myerror -ErrorAction SilentlyContinue
+
+
+			if ($MyError -ne $NULL)
+			{
+				$ErrorProcessing=$true
+				$OutputString=$Computer+" Error deleting files from guest computer"
+				$OutputString
+				$OutputString >>Transfer_Errors.txt
+				continue
+			}
+		}
+
+		$OSText = "schtasks.exe /delete /TN " + """" + "Migration Config" + """" + " /f"
+		$MyError=$NULL
+		Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSText -ScriptType Bat -VM $Server.Name -ErrorVariable myerror -ErrorAction SilentlyContinue
+		if ($MyError -ne $Null)
+		{
+			$ErrorProcessing=$true
+			$OutputString=$Computer + " Scheduled job could not be removed"
+			$OutputString
+			$OutputString >>Delfiles_Errors.txt
+			Continue
+		}
+		$OutputString="Completed Successfully deleting files from "+ $Computer 
+		$OutputString >>Delfiles_Success.txt
+	}
+	if ($ErrorProcessing)
+	{
+		Write-Host "Script Completed deleting guest files, however there were errors in 1 or more servers being processed"
+		exit
+	}
+	Write-Host "Script Completed deleting guest files with no errors"
+}
+
+
+
+
+Function Schedule
+{
+	$GuestCred=get-credential
+	$ErrorProcessing=$false
+	remove-item Schedule_Success.txt -ErrorAction SilentlyContinue
+	remove-item Schedule_Errors.txt -ErrorAction SilentlyContinue
+	$Servers=import-csv vmreip.csv
+	foreach($Server in $Servers)
+	{
+		$MyError=$NULL
+		$Computer=$Server.Name
+		$OSText = "c:\migrationtemp\" + $Computer+"_schedule.bat"
+		Invoke-VMScript -GuestCredential $Guestcred -ScriptText $OSText -ScriptType Bat -VM $Computer -ErrorVariable myerror -ErrorAction SilentlyContinue
+		if ($MyError -ne $NULL)
+		{
+			$OutPutString=$Computer + " Could not Schedule Job"
+			$OutPutString
+			$OutPutString >>Schedule_Errors.txt
+		}
+		Else
+		{
+			$OutputString=$computer + " Successfully scheduled job"
+			$OutputString
+			$OutputString >>Schedule_Success.txt
+		}					
+	}
+}
+$mode
+if ($Mode -ieq "Create")
+{
+	Create
+	exit
+}
+if ($Mode -ieq "Transfer")
+{
+	Transfer
+	exit
+}
+if ($Mode -ieq "Schedule")
+{
+	Schedule
+	exit
+}
+if ($Mode -ieq "DelFiles")
+{
+	Delfiles
+	exit
+}
+Write-Host "Mode must be explicitely Create,Transfer,Schedule or Delfiles"
+exit

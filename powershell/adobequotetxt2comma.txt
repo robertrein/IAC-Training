@@ -1,0 +1,155 @@
+868703-B21
+HPE ProLiant DL380 Gen10 - rack-mountable -
+no CPU - 0 GB - 0 GB
+3
+1,060.28
+3,180.84
+OPEN MARKET
+868703-B21#ABA
+HPE ProLiant DL380 Gen10 Base -
+rack-mountable - no CPU - 0 GB - 0 GB
+3
+0.01
+0.03
+OPEN MARKET
+826880-L21
+Intel Xeon Gold 6142 / 2.6 GHz processor
+3
+3,048.82
+9,146.46
+OPEN MARKET
+826880-B21
+Intel Xeon Gold 6142 / 2.6 GHz processor
+3
+3,048.82
+9,146.46
+OPEN MARKET
+815100-B21
+HPE - DDR4 - 32 GB - DIMM 288-pin
+48
+569.22
+27,322.56
+OPEN MARKET
+875293-B21
+HPE Memory Fast Fault Tolerance FIO Kit -
+server accessories kit
+3
+0.59
+1.77
+OPEN MARKET
+870548-B21
+HPE x8/x16/x8 Riser Kit - riser card
+3
+94.44
+283.32
+OPEN MARKET
+647594-B21
+HPE 331T - network adapter
+3
+204.39
+613.17
+OPEN MARKET
+817753-B21
+HPE 640SFP28 - network adapter
+3
+496.47
+1,489.41
+OPEN MARKET
+871674-B21
+HPE Slot 1/2 x16/x16 Riser Kit - riser card
+3
+31.02
+93.06
+OPEN MARKET
+Q0L13A
+HPE StoreFabric SN1200E 16 Gb Single Port -
+host bus adapter
+6
+717.38
+4,304.28
+OPEN MARKET
+P01366-B21
+HPE 96W Smart Storage Battery - battery -
+Li-Ion
+3
+44.85
+134.55
+OPEN MARKET
+804331-B21
+HPE Smart Array P408I-A SR Gen10 - storage
+controller (RAID) - SATA 6Gb/s / SAS 12Gb/s -
+PCIe 3.0 x8
+3
+263.76
+791.28
+OPEN MARKET
+817749-B21
+HPE 640FLR-SFP28 - network adapter
+3
+302.29
+906.87
+OPEN MARKET
+865414-B21
+HPE - power supply - hot-plug / redundant -
+800 Watt - 908 VA
+6
+169.47
+1,016.82
+OPEN MARKET
+733664-B21
+HPE cable management arm - 2U
+3
+32.88
+98.64
+OPEN MARKET
+864279-B21
+HPE Trusted Platform Module (TPM) 2.0 -
+hardware security chip
+3
+30.95
+92.85
+OPEN MARKET
+867824-B21
+HPE intrusion detect option
+3
+20.44
+61.32
+OPEN MARKET
+733660-B21
+HPE Small Form Factor Easy Install Rail Kit -
+rack rail kit - 2U
+3
+46.02
+138.06
+OPEN MARKET
+455883-B21
+HPE - SFP+ transceiver module - 10 GigE
+12
+413.63
+4,963.56
+OPEN MARKET
+P8B25A
+HPE OneView without iLO Advanced - Tracking
+license + 3 Years 24x7 Support - 1 server -
+Activation Key Agreement (AKA) required
+3
+240.76
+722.28
+Coverage Dates:
+19-JUN-2018 - 19-JUN-2021
+OPEN MARKET
+Q2F26AAE
+HPE Secure Encryption Smart Array - License -
+1 server entitlement - ESD
+3
+139.95
+419.85
+OPEN MARKET
+Q7E36A
+HPE Integrated Lights-Out Advanced Premium
+Security - Tracking license + 1 Year 24x7
+Support
+3
+231.32
+693.96
+OPEN MARKET

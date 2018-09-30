@@ -1,0 +1,100 @@
+Param(
+  [string]$VCenterName,
+  $CRED,
+  [string]$FirstRun
+)
+if ($VCenterName -eq "")
+{
+	$VCenterName=Read-host "Please enter vcenter: "
+}
+
+if ($VCenterName -eq "")
+{
+	Write-Host "VCenter Name Blank"
+	exit
+}
+
+$String2Compare="""" + "VCenter" + """" + "," + """" + "hostname" + """" + "," + """" + "notes" + """"
+
+$WarningPreference = "SilentlyContinue"
+$ErrorActionPreference = "SilentlyContinue"
+add-PSSnapin VMware.VimAutomation.Core
+Write-Host "Processing VCenter:"$VCenterName
+Connect-VIServer $VCenterName -Credential $CRED
+#Change the above line to include any of the vcenters you wish to inventory.
+#Example of multiple connections -- Connect-VIServer 'apsed1471','apsed1475'
+$date = Get-Date -UFormat %y%m%d
+$path = $HOME + "\Desktop\" + $VCenterName + $date + ".csv"
+$finalpath=$HOME + "\Desktop\vc2csv" + $date + ".csv"
+$report = @()
+$pattern = "Requesting user: (.*)`n"
+$pattern2 = "Subscription ID: (.*)`n"
+$pattern3 = "CSA server: (.*)`n?"
+$pattern4 = "Created on (.*)`n?"
+$pattern5 = "Service Offering: (.*)`n?"
+
+#$vmx = get-vm | sort name | Where-Object { $_.notes -match "Self Service" -and $_.notes -notlike "*DND*" } 
+$vmx = get-vm | sort name
+ForEach ($vm in $vmx){
+    $line = "" | select VCenter,hostname,notes,folder,primaryIP,priDNS,backupIP,buDNS,user,cUUID,srcCSA,srcDate,offering
+    $line.VCenter=$VCenterName
+    $line.hostname = $vm.name
+	$line.folder = $vm.folder.name
+    $primaryIP = ''
+    $backupIP = ''
+
+            $line.backupIP = $vm.guest.IPAddress[1]
+			$buDNS = [System.Net.dns]::GetHostEntry($vm.guest.IPAddress[1])
+			$line.buDNS = $buDNS.HostName
+
+            $line.primaryIP = $vm.guest.IPAddress[0]
+			$priDNS = [System.Net.dns]::GetHostEntry($vm.guest.IPAddress[0])
+			$line.priDNS = $priDNS.hostname
+      
+    if ($vm.notes -match $pattern){
+        $line.user = $matches[1]
+		}
+    if ($vm.notes -match $pattern2){
+    $line.cUUID = $matches[1]
+    }
+	if ($vm.notes -match $pattern3){
+    $line.srcCSA = $matches[1]
+    }
+	if ($vm.notes -match $pattern4){
+		$notes = $matches[1]
+		$str = $notes -replace "Created on "
+		$str1 = $str -replace " via Self Service"
+    $line.srcDate = $str1
+    }
+    if ($vm.notes -match $pattern5){
+        $line.offering = $matches[1]
+    }
+
+    $report += $line
+    #Write-Host $line
+}
+
+$report | Export-Csv -NoTypeInformation -Path $path
+
+if ($FirstRun.ToLower() -eq "yes")
+{
+	Write-Host "Creating "$finalpath "from first run report "$path
+	type $path >$finalpath
+	Write-Host "Removing file "$path
+	Remove-Item $path
+}
+else
+{
+	Write-Host "Appending "$path "to" $finalpath
+	$records=Get-Content $path
+	foreach($record in $records)
+	{
+		if ( -NOT $record.contains($String2Compare))
+		{
+			$record >>$finalPath
+		}
+	}
+	Write-Host "Removing File "$path
+	Remove-Item $path
+}
+Disconnect-VIServer * -Confirm:$false

@@ -1,0 +1,154 @@
+Function OpenPINGSpreadSheet
+{
+	$before = @(Get-Process [e]xcel | %{$_.Id})
+	# Create an Object Excel.Application using Com interface
+	$global:objExcel = New-Object -ComObject Excel.Application
+	$global:ExcelId = Get-Process excel | %{$_.Id} | ?{$before -notcontains $_}
+	# Disable the 'visible' property so the document won't open in excel
+	$objExcel.Visible = $False
+	# Open the Excel file and save it in $WorkBook
+	$global:WorkBook = $objExcel.Workbooks.Open($FilePath)
+}
+Function CloseExcelFile
+{
+	$Workbook.Save()
+	$Workbook.Close()
+	$objExcel.Quit()
+	Stop-Process -Id $ExcelId -Force -ErrorAction SilentlyContinue
+}
+Function ReadPingTemp
+{
+	$RecCtr=0
+	$reader = [System.IO.File]::OpenText("pingtester.tmp")
+	try {
+	    for(;;) {
+	        $line = $reader.ReadLine()
+		$RecCtr=$RecCtr+1
+	        if ($line -eq $null) {
+			$MS=$MS/($RecCtr-3)
+			break 
+		}
+	        # process the line
+		if ($RecCtr -gt 3)
+		{
+			$global:IP=$line.substring(30,15)
+			$global:MS=$line.substring(90,13)
+			$IP=$IP.Replace(" ","")
+			$MS=$MS.Replace(" ","")
+			
+		}	        
+	    }
+	}
+	finally {
+	$reader.Close()
+	}
+}
+Function ReadIPTemp
+{
+	$RecCtr=0
+	$reader = [System.IO.File]::OpenText("lookupip.tmp")
+	try {
+	    for(;;) {
+	        $line = $reader.ReadLine()
+		$RecCtr=$RecCtr+1
+	        # process the line
+		if ($RecCtr -eq 4)
+		{
+			$global:FQDN=$line.substring(0,40)
+			$FQDN=$FQDN.Replace(" ","")
+			break			
+		}	        
+	    }
+	}
+	finally {
+	$reader.Close()
+	}
+
+
+}
+$global:FilePath="pingtester.xlsx"
+OpenPINGSpreadsheet
+$global:WorkSheet=$WorkBook.sheets.item("Ping")
+$RowNo=2
+$CellRange="A" + $RowNo
+$Results=@()
+while(1)
+{
+	$Server=$WorkSheet.Range($CellRange).text
+	$Server=$Server.Replace(" ","")
+	if ($Server -eq "")
+	{
+		CloseExcelFile
+		Exit
+	}
+	# DETERMINE IF SERVER IS IP OR NAME
+	$pat = "^[a-zA-Z]"
+	$AnyAlpha=$Server -match $pat
+	if ($AnyAlpha)
+	{
+		$TypeRec="Server"
+	}
+	else
+	{
+		$TypeRec="IP"
+	}
+	$TypeRec
+	if ($TypeRec -eq "IP")
+	{
+		$Error.Clear()
+		[SYSTEM.NET.DNS]::GetHostByAddress($Server) >lookupip.tmp
+		if ($Error.Count -ne 0)
+		{
+			$global:FQDN="NOT FOUND"
+			$Error.Clear()
+		}
+		Else
+		{
+			ReadIPTemp
+		}
+	}
+	if ($TypeRec -eq "Server")
+	{
+		$Error.Clear()
+		[SYSTEM.NET.DNS]::GetHostByName($Server) >lookupip.tmp
+		if ($Error.Count -ne 0)
+		{
+			$global:FQDN="NOT FOUND"
+			$Error.Clear()
+		}
+		Else
+		{
+			ReadIPTemp
+		}
+	}
+	Write-Host "Pinging Host "$Server
+	$Error.Clear()
+	Test-Connection -ComputerName $Server -ErrorAction SilentlyContinue >pingtester.tmp
+	if ($Error.count -ne 0)
+	{
+		$WorkSheet.Cells.Item($RowNo,2)="FAILED"
+		$WorkSheet.Cells.Item($RowNo,5)=$FQDN
+		Write-Host "Ping Failed"
+		$RowNo=$RowNo+1
+		$CellRange="A" + $RowNo
+		$Error.Clear()
+	}
+	Else
+	{
+		ReadPingTemp
+		$WorkSheet.Cells.Item($RowNo,2)="PASSED"
+		$WorkSheet.Cells.Item($RowNo,3)=$IP
+		$WorkSheet.Cells.Item($RowNo,4)=$MS
+		$WorkSheet.Cells.Item($RowNo,5)=$FQDN
+
+		Write-Host $IP $MS
+		$RowNo=$RowNo+1
+		$CellRange="A" + $RowNo
+	}	
+}
+
+
+
+
+
+CloseExcelFile

@@ -1,0 +1,21 @@
+﻿{ "SLD":
+{ "uCIServers":
+{ "server": {
+    "captype":"linuxserver_6.2full",
+    "sname":"PRJ102862 LINUX 6 BUILDME",
+    "projnum":"PRJ102862",
+    "cpu":"1",
+    "ram":"2",
+    "environment":"PROD",
+    "zone":"Intranet",
+    "datacenter":"Elk River",
+    "serverType":"APP",
+    "tmdb":"TMDB-5072209",
+    "interfaceZone":" ",
+    "dr":" ",
+    "quantity":"1"
+}
+},
+"uCIdb":null
+}
+}

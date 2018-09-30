@@ -1,0 +1,17 @@
+dbsrd2578,10.87.36.251,uhc.com
+dbsrd2645,10.87.150.83,uhc.com
+dbsrd2646,10.204.85.16,uhc.com
+webed0880,10.204.84.204,ms.ds.uhc.com
+apsed4048,1.1.1.1,ms.ds.uhc.com
+apsed4053,10.204.85.24,ms.ds.uhc.com
+apsed4054,10.87.151.221,ms.ds.uhc.com
+apset3014,10.204.89.105,ms.ds.uhc.com
+apset3015,10.87.151.118,ms.ds.uhc.com
+apset3016,10.87.151.181,ms.ds.uhc.com
+apset3017,10.87.148.166,ms.ds.uhc.com
+apset3018,10.87.148.167,ms.ds.uhc.com
+apset3019,10.204.85.30,ms.ds.uhc.com
+apsrd6606,10.87.148.110,uhc.com
+apsrd6607,10.204.84.215,uhc.com
+apsrd6608,10.87.148.165,uhc.com
+apsrd6610,10.87.143.99,uhc.com

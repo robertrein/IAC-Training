@@ -1,0 +1,43 @@
+:: This script will configure (or reconfigure) the indicated elements of a VM guest. 
+
+@ECHO off 
+
+SetLocal 
+
+::***********************************************************************************
+::*  Configure Primary network interface name and IP.                               *
+::***********************************************************************************
+
+::Rename PRI NIC to standard. 
+::Clear DNS and WINS server entries. 
+::Set Primary NIC as first in binding order. 
+
+netsh interface set interface name="Prod 1" newname="BOSD7IPRSQL01_PRI" 
+sleep 10 
+netsh int ip set address name="BOSD7IPRSQL01_PRI" source=Static addr=10.122.73.42 mask=255.255.254.0 gateway=10.122.72.1 gwmetric=0 
+netsh int ip set dns name="BOSD7IPRSQL01_PRI" addr=none source=Static 
+netsh int ip set wins name="BOSD7IPRSQL01_PRI" addr=none source=Static 
+
+
+
+nvspbindxp.exe /++ BOSD7IPRSQL01_PRI ms_tcpip 
+REG ADD HKLM\SYSTEM\CurrentControlSet\services\Tcpip\Parameters /v "SearchList" /d "ksc.pcl.ingenix.com,pcl.ingenix.com,geoaccess.com,dmzkc1.geoaccess.com,ms.ds.uhc.com,uhc.com" /f 
+
+
+::***********************************************************************************
+::*  Configure Primary network interface DNS and WINS, per standard (Internal).     *
+::***********************************************************************************
+
+netsh int ip add dns name="BOSD7IPRSQL01_PRI" addr=10.90.40.105 index=1 
+netsh int ip add dns name="BOSD7IPRSQL01_PRI" addr=10.4.148.103 index=2 
+netsh int ip add dns name="BOSD7IPRSQL01_PRI" addr=10.3.116.104 index=3 
+netsh int ip add wins name="BOSD7IPRSQL01_PRI" addr=10.175.231.100 index=1 
+netsh int ip add wins name="BOSD7IPRSQL01_PRI" addr=10.223.192.155 index=2 
+
+
+netsh interface set interface name="backup" newname="backup-storage"  
+sleep 10 
+netsh int ipv4 set address name="backup-storage"  source=Static addr=10.25.72.243 mask=255.255.0.0 
+netsh int ipv4 set dns name="backup-storage" source=Static addr=none register=none 
+wmic nicconfig where index= call SetTcpipNetbios 2 
+nvspbindxp.exe -d backup-storage ms_server 

@@ -1,0 +1,17 @@
+nslookup apsrp01476
+nslookup apsrp01477
+nslookup apsrp01478
+nslookup apsrp01479
+nslookup apsrp01480
+nslookup apsrp01481
+nslookup apsrp01482
+nslookup apsrp01483
+nslookup apsrp01484
+nslookup apsrp01485
+nslookup apsrp01486
+nslookup apsrp01487
+nslookup apsrp01488
+nslookup apsrp01489
+nslookup apsrp01490
+nslookup apsrp01491
+nslookup apsrp01492
